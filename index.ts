@@ -3,7 +3,7 @@ dotenv.config();
 
 import express, { Request, Response } from "express";
 import cors from "cors";
-import { MongoClient, ServerApiVersion } from "mongodb";
+import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 const app = express();
 
@@ -26,6 +26,66 @@ async function run() {
   try {
     await client.connect();
 
+
+    const db = client.db("Eco-world")
+    const AddProducts = db.collection("addproduct");
+
+
+//  add products ar jnno
+
+    app.post("/products",async(req,res)=>{
+      const body = req.body;
+      const result = await AddProducts.insertOne(body)
+      res.send(result)
+    })
+
+    app.get("/products",async(req,res)=>{
+      const result = await AddProducts.find().toArray()
+      res.send(result)
+    })
+
+// product manage korar jnno
+
+app.patch("/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const updateData = req.body;
+
+    const result = await AddProducts.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: updateData,
+      }
+    );
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Update failed" });
+  }
+});
+
+
+app.delete("/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await AddProducts.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Delete failed" });
+  }
+});
+
+
+
+
+
+
+
     await client.db("admin").command({ ping: 1 });
 
     console.log("✅ MongoDB Connected");
@@ -38,7 +98,7 @@ async function run() {
 
 
 
-    
+
 
     app.listen(PORT, () => {
       console.log(`🚀 Server Running http://localhost:${PORT}`);
