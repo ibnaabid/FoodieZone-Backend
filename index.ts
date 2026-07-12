@@ -29,6 +29,7 @@ async function run() {
 
     const db = client.db("Eco-world")
     const AddProducts = db.collection("addproduct");
+    const FavouriteCollection = db.collection("wishlist")
 
 
 //  add products ar jnno
@@ -80,8 +81,40 @@ app.delete("/products/:id", async (req, res) => {
   }
 });
 
+// dynamic product dkhar jnno
+app.get("/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    const result = await AddProducts.findOne({
+      _id: new ObjectId(id),
+    });
 
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch product" });
+  }
+});
+
+// fav ar jnno
+app.post("/favourite", async (req, res) => {
+  const favourite = req.body;
+
+  const exists = await FavouriteCollection.findOne({
+    productId: favourite.productId,
+    userEmail: favourite.userEmail,
+  });
+
+  if (exists) {
+    return res.send({
+      message: "Already added to favourite",
+    });
+  }
+
+  const result = await FavouriteCollection.insertOne(favourite);
+
+  res.send(result);
+});
 
 
 
