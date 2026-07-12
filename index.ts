@@ -284,6 +284,19 @@ app.post("/orders", async (req: Request, res: Response) => {
       res.send(body)
     })
 
+     app.delete("/orders/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await ordersCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Delete failed" });
+  }
+});
 
 
 
