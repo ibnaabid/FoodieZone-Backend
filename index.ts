@@ -1,13 +1,15 @@
 import dotenv from "dotenv";
 dotenv.config();
-
-import express, { Request, Response, Application } from "express";
+import express, { Request, Response, Application, NextFunction } from "express";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import Stripe from "stripe";
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
+
+
+  const jose = require("jose-cjs");
 
 const uri = process.env.MONGODB_URI as string;
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -36,6 +38,48 @@ async function run() {
     const ordersCollection = db.collection("buyHandy")
 
 
+    // jwt
+
+// Remote JWKS Set
+const jwks = jose.createRemoteJWKSet(
+  new URL(`${process.env.BETTER_AUTH_URL}/api/auth/jwks`)
+);
+
+// --- Admin Verification Middleware ---
+const adminVerify = async (
+  req: any, // এখানে Request এর বদলে direct 'any' করে দেওয়া হলো
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const auth = req.headers.authorization;
+
+    if (!auth || !auth.startsWith("Bearer ")) {
+      res.status(401).send({ success: false, message: "Unauthorized" });
+      return;
+    }
+    
+
+
+    const token = auth.split(" ")[1];
+
+    console.log(token,"token")
+    
+    // টোকেন ভেরিফাই
+    const { payload } = await jose.jwtVerify(token, jwks);
+    
+    req.user = payload; // এখন কোনো এরর ছাড়াই অ্যাসাইন হবে
+    console.log("pay", payload);
+
+    next();
+  } catch (error) {
+    console.error("JWT Verification Error:", error);
+    res.status(401).send({ success: false, message: "Invalid Token" });
+  }
+};
+
+
+
 //  add products ar jnno
 
     app.post("/products",async(req,res)=>{
@@ -44,7 +88,7 @@ async function run() {
       res.send(result)
     })
 
-  app.get("/products", async (req, res) => {
+  app.get("/products",adminVerify, async (req, res) => {
   try {
     const {
       search,
@@ -156,7 +200,7 @@ app.delete("/products/:id", async (req, res) => {
 });
 
 // dynamic product dkhar jnno
-app.get("/products/:id", async (req, res) => {
+app.get("/products/:id",adminVerify, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -191,13 +235,13 @@ app.post("/favourite", async (req, res) => {
 });
 
 
- app.get("/favourite",async(req,res)=>{
+ app.get("/favourite",adminVerify,async(req,res)=>{
       const result = await FavouriteCollection.find().toArray()
       res.send(result)
     })
 
 
-    app.delete("/favourite/:id", async (req, res) => {
+    app.delete("/favourite/:id",adminVerify, async (req, res) => {
   try {
     const { id } = req.params;
 
