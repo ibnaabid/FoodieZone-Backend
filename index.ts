@@ -26,9 +26,8 @@ const client = new MongoClient(uri, {
   },
 });
 
-async function run() {
-  try {
-    await client.connect();
+ client.connect();
+console.log("MongoDB Connected");
 
 
     const db = client.db("Eco-world")
@@ -345,10 +344,6 @@ app.post("/orders", async (req: Request, res: Response) => {
 
 
 
-    await client.db("admin").command({ ping: 1 });
-
-    console.log("✅ MongoDB Connected");
-
     app.get("/", (req: Request, res: Response) => {
       res.send("🚀 Eco World Backend Running");
     });
@@ -356,15 +351,12 @@ app.post("/orders", async (req: Request, res: Response) => {
 
 
 
+    console.log("Pinged your deployment. You successfully connected to MongoDB!")
 
 
 
     app.listen(PORT, () => {
       console.log(`🚀 Server Running http://localhost:${PORT}`);
     });
-  } catch (error) {
-    console.error(error);
-  }
-}
 
-run();
+module.exports=app
