@@ -50,45 +50,95 @@ async function run() {
     // ===========================
     // Get All Foods
     // ===========================
-    app.get("/menu", async (req: Request, res: Response) => {
-      try {
-        const foods = await foodsCollection.find().toArray();
-        res.send(foods);
-      } catch (error) {
-        res.status(500).send({ message: "Failed to fetch menu" });
-      }
+ app.get("/menu", async (req, res) => {
+  try {
+    const { search, category, sort } = req.query;
+
+    const query: any = {};
+
+    // Search
+    if (search) {
+      query.$or = [
+        {
+          name: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    // Category Filter
+    if (category && category !== "All") {
+      query.category = category;
+    }
+
+    // Sort
+    let sortOption = {};
+
+    if (sort === "low") {
+      sortOption = {
+        price: 1,
+      };
+    }
+
+    if (sort === "high") {
+      sortOption = {
+        price: -1,
+      };
+    }
+
+    const foods = await foodsCollection
+      .find(query)
+      .sort(sortOption)
+      .toArray();
+
+    res.send(foods);
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      message: "Failed to fetch menu",
     });
+  }
+});
 
     // ===========================
     // Get Single Food
     // ===========================
-    // app.get("/menu/:id", async (req: Request, res: Response) => {
-    //   try {
-    //     const id = req.params.id as string;
+    app.get("/menu/:id", async (req: Request, res: Response) => {
+      try {
+        const id = req.params.id as string;
 
-    //     if (!ObjectId.isValid(id)) {
-    //       return res.status(400).send({
-    //         message: "Invalid Food ID",
-    //       });
-    //     }
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            message: "Invalid Food ID",
+          });
+        }
 
-    //     const food = await foodsCollection.findOne({
-    //       _id: new ObjectId(id),
-    //     });
+        const food = await foodsCollection.findOne({
+          _id: new ObjectId(id),
+        });
 
-    //     if (!food) {
-    //       return res.status(404).send({
-    //         message: "Food not found",
-    //       });
-    //     }
+        if (!food) {
+          return res.status(404).send({
+            message: "Food not found",
+          });
+        }
 
-    //     res.send(food);
-    //   } catch (error) {
-    //     res.status(500).send({
-    //       message: "Something went wrong",
-    //     });
-    //   }
-    // });
+        res.send(food);
+      } catch (error) {
+        res.status(500).send({
+          message: "Something went wrong",
+        });
+      }
+    });
 
     // ===========================
     // Update Food
@@ -132,6 +182,30 @@ async function run() {
         });
       }
     });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     app.get("/", (req: Request, res: Response) => {
       res.send("🚀 Restaurant Backend is Running Perfectly!");
