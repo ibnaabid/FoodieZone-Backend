@@ -8,7 +8,13 @@ import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 const uri = process.env.MONGODB_URI as string;
