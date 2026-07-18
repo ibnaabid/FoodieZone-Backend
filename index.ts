@@ -196,21 +196,18 @@ app.post("/favorite", async (req, res) => {
 
 
 
-    app.get("/favorite/:email", async (req, res) => {
-  try {
-    const email = req.params.email;
+   
 
-    const result = await favoriteCollection
-      .find({ userEmail: email })
-      .toArray();
 
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({
-      message: "Failed to fetch favourite items",
+  app.delete("/favorite/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await favoriteCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Delete failed" });
+      }
     });
-  }
-});
 
     // ===========================
     // AI Chat — Gemini Streaming
