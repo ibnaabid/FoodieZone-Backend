@@ -1,18 +1,20 @@
 {
+  "name": "restaurant-backend",
+  "version": "1.0.0",
+  "description": "Foodie Zone Restaurant Backend",
+  "main": "index.ts",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
   "dependencies": {
-    "@better-auth/mongo-adapter": "^1.6.23",
-    "@stripe/stripe-js": "^9.9.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jose-cjs": "^6.2.3",
-    "mongodb": "^7.5.0",
-    "stripe": "^22.3.1"
+    "mongodb": "^7.5.0"
   },
-  "name": "handy-backend",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.ts",
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -20,20 +22,5 @@
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ibnaabid/Eco-World-Backend.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/ibnaabid/Eco-World-Backend/issues"
-  },
-  "homepage": "https://github.com/ibnaabid/Eco-World-Backend#readme"
+  }
 }
