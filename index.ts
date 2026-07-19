@@ -5,6 +5,7 @@ dotenv.config();
 import express, { Application } from "express";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app: Application = express();
@@ -30,16 +31,17 @@ const client = new MongoClient(uri, {
 
 console.log("🔑 GEMINI_API_KEY loaded:", process.env.GEMINI_API_KEY ? `Yes (starts with ${process.env.GEMINI_API_KEY.slice(0, 6)}...)` : "❌ NO — missing!");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 const SYSTEM_PROMPT = `You are CravingByte's AI assistant — a friendly food ordering app assistant.
 You help users find dishes, understand categories, track orders, and navigate the app.
 Keep answers short, warm, and practical. If asked something outside food/ordering context, gently redirect.`;
 
-async function run() {
-  try {
-    await client.connect();
-    console.log("✅ MongoDB Connected");
+
+
+
+ client.connect();
+console.log("MongoDB Connected");
 
     const db = client.db("Foddie");
     const foodsCollection = db.collection("menu");
@@ -257,47 +259,6 @@ app.get("/reviews", async (req, res) => {
 // ===========================
 // AI Chat — Gemini Streaming + Role Support (Fixed)
 // ===========================
-app.post("/chat", async (req, res) => {
-  try {
-    const { userId, message } = req.body;
-
-    if (!userId || !message?.trim()) {
-      return res.status(400).json({ error: "userId and message required" });
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
-    }
-
-    const trimmedMessage = message.trim();
-
-    // ✅ সহজ মডেল ব্যবহার করো
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash"   // অথবা "gemini-pro" চেষ্টা করতে পারো
-    });
-
-    const result = await model.generateContent(trimmedMessage);
-    const reply = result.response.text();
-
-    console.log("✅ Gemini Reply:", reply.substring(0, 100) + "...");
-
-    res.json({ 
-      success: true, 
-      reply: reply 
-    });
-
-  } catch (error: any) {
-    console.error("=== GEMINI ERROR ===");
-    console.error("Message:", error.message);
-    console.error("Status:", error.status);
-    console.error("===================");
-
-    res.status(500).json({ 
-      error: "AI service error",
-      message: error.message 
-    });
-  }
-});
     // ===========================
     // Chat History Routes
     // ===========================
@@ -335,13 +296,17 @@ app.post("/chat", async (req, res) => {
       res.send("🚀 Restaurant Backend is running perfectly!");
     });
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-    });
 
-  } catch (err) {
-    console.error("❌ Connection failed", err);
-  }
-}
+   // await client.db("admin").command({ ping: 1 });
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+//   } finally {
+  
+//   }
+// }
+// run().catch(console.dir);
 
-run().catch(console.dir);
+app.listen(PORT, () => {
+  console.log(`Example app listening on port ${PORT}`);
+});
+
+module.exports=app
