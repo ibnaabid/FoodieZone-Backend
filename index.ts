@@ -6,7 +6,7 @@ import express, { Application } from "express";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -29,9 +29,24 @@ const client = new MongoClient(uri, {
   },
 });
 
-console.log("🔑 GEMINI_API_KEY loaded:", process.env.GEMINI_API_KEY ? `Yes (starts with ${process.env.GEMINI_API_KEY.slice(0, 6)}...)` : "❌ NO — missing!");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+console.log(
+  "🔑 OPENROUTER_API_KEY loaded:",
+  process.env.OPENROUTER_API_KEY
+    ? `Yes (starts with ${process.env.OPENROUTER_API_KEY.slice(0, 6)}...)`
+    : "❌ NO — missing!"
+);
+
+const openrouter = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  defaultHeaders: {
+    "HTTP-Referer": "https://foodiezone-nu.vercel.app",
+    "X-Title": "CravingByte",
+  },
+});
+
+const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 const SYSTEM_PROMPT = `You are CravingByte's AI assistant — a friendly food ordering app assistant.
 You help users find dishes, understand categories, track orders, and navigate the app.
@@ -259,35 +274,119 @@ app.get("/reviews", async (req, res) => {
 // ===========================
 // AI Chat — Gemini Streaming + Role Support (Fixed)
 // ===========================
-    // ===========================
-    // Chat History Routes
-    // ===========================
-    app.get("/chat/:userId", async (req, res) => {
-      try {
-        const { userId } = req.params;
-        const history = await conversations
-          .find({ userId })
-          .sort({ createdAt: -1 })
-          .limit(10)
-          .toArray();
-        res.json(history);
-      } catch (error) {
-        res.status(500).json({ error: "Failed to fetch history" });
-      }
-    });
+    app.post("/chat", async (req, res) => {
+    try {
+      const { userId, role, message } = req.body;
 
-    app.get("/chat", async (req, res) => {
-      try {
-        const history = await conversations
-          .find()
-          .sort({ createdAt: -1 })
-          .limit(10)
-          .toArray();
-        res.json(history);
-      } catch (error) {
-        res.status(500).json({ error: "Failed to fetch history" });
+      if (!userId || !message) {
+        return res.status(400).json({ error: "userId and message are required" });
       }
-    });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const prevMessages = await conversations
+        .find({ userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+      prevMessages.reverse();
+
+      const roleContext =
+        role === "restaurant"
+          ? "The user is a restaurant owner managing their menu and orders."
+          : "The user is a customer browsing food and placing orders.";
+
+      const chatMessages = [
+        { role: "system" as const, content: `${SYSTEM_PROMPT}\n${roleContext}` },
+        ...prevMessages.map((m: any) => ({
+          role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+          content: m.content,
+        })),
+        { role: "user" as const, content: message },
+      ];
+
+      await conversations.insertOne({
+        userId,
+        role: "user",
+        content: message,
+        createdAt: new Date(),
+      });
+
+      const stream = await openrouter.chat.completions.create({
+        model: MODEL,
+        messages: chatMessages,
+        stream: true,
+        temperature: 0.7,
+      });
+
+      let fullReply = "";
+      for await (const chunk of stream) {
+        const token = chunk.choices[0]?.delta?.content || "";
+        if (token) {
+          fullReply += token;
+          res.write(`data: ${JSON.stringify({ token })}\n\n`);
+        }
+      }
+
+      let suggestions: string[] = [];
+      try {
+        const suggestionRes = await openrouter.chat.completions.create({
+          model: MODEL,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Suggest 3 short, natural follow-up questions the user might ask next based on this reply. Reply ONLY with a JSON array of 3 strings, nothing else.",
+            },
+            { role: "user", content: fullReply },
+          ],
+          temperature: 0.5,
+        });
+        suggestions = JSON.parse(suggestionRes.choices[0].message.content || "[]");
+      } catch {
+        suggestions = [];
+      }
+
+      await conversations.insertOne({
+        userId,
+        role: "assistant",
+        content: fullReply,
+        createdAt: new Date(),
+      });
+
+      res.write(`data: ${JSON.stringify({ done: true, suggestions })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("Chat error:", error);
+      res.write(`data: ${JSON.stringify({ error: "Something went wrong." })}\n\n`);
+      res.end();
+    }
+  });
+
+  app.get("/chat/:userId", async (req, res) => {
+    try {
+      const history = await conversations
+        .find({ userId: req.params.userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch history" });
+    }
+  });
+
+  app.get("/chat", async (req, res) => {
+    try {
+      const history = await conversations.find().sort({ createdAt: -1 }).limit(10).toArray();
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch history" });
+    }
+  });
 
     // ===========================
     // Home Route
