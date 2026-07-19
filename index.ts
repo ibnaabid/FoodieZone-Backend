@@ -45,6 +45,7 @@ async function run() {
     const foodsCollection = db.collection("menu");
     const conversations = db.collection("conversations");
     const favoriteCollection = db.collection("wishlist")
+    const reviewsCollection = db.collection("review")
 
     // ===========================
     // Add Food
@@ -208,6 +209,38 @@ app.post("/favorite", async (req, res) => {
         res.status(500).send({ message: "Delete failed" });
       }
     });
+
+    //  add review
+    app.post("/reviews", async (req, res) => {
+  try {
+    const { name, rating, comment } = req.body;
+
+    if (!rating || !comment) {
+      return res.status(400).send({ message: "Rating and comment are required" });
+    }
+
+    const newReview = {
+      name: name || "Anonymous",
+      rating: Number(rating),
+      comment: String(comment).trim(),
+      createdAt: new Date(),
+    };
+
+    const result = await reviewsCollection.insertOne(newReview);
+    res.status(201).send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to submit review" });
+  }
+});
+
+app.get("/reviews", async (req, res) => {
+  try {
+    const reviews = await reviewsCollection.find().sort({ createdAt: -1 }).toArray();
+    res.send(reviews);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to fetch reviews" });
+  }
+});
 
     // ===========================
     // AI Chat — Gemini Streaming
