@@ -11,12 +11,15 @@ import OpenAI from "openai";
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(
-  cors({
-    origin: "https://foodiezone-nu.vercel.app",
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: [
+    "https://foodiezone-nu.vercel.app",
+    "http://localhost:3000",
+  ],
+  credentials: true,
+}));
+
+
 app.use(express.json());
 
 const uri = process.env.MONGODB_URI || "";
