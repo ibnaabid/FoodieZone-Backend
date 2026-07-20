@@ -260,6 +260,7 @@ app.get("/reviews", async (req, res) => {
 // AI Chat — Fixed & Clean
 // ===========================
 // AI Chat — Fixed & Clean
+// AI Chat — Refactored and Stable
 app.post("/chat", async (req, res) => {
   try {
     const { userId, message } = req.body;
@@ -284,14 +285,11 @@ app.post("/chat", async (req, res) => {
     let fullReply = "";
 
     try {
-      // ২. সিস্টেম প্রম্পটসহ মডেল কল করা
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // সিস্টেম প্রম্পটটিকে মেসেজের সাথে জুড়ে দেওয়া
+      const fullPrompt = `${SYSTEM_PROMPT}\n\nUser Question: ${message.trim()}`;
       
-      const chat = model.startChat({
-        history: [{ role: "user", parts: [{ text: SYSTEM_PROMPT }] }],
-      });
-
-      const result = await chat.sendMessageStream(message.trim());
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContentStream(fullPrompt);
 
       for await (const chunk of result.stream) {
         const token = chunk.text();
@@ -302,7 +300,7 @@ app.post("/chat", async (req, res) => {
       }
     } catch (geminiError: any) {
       console.error("❌ Gemini API Error:", geminiError);
-      fullReply = "দুঃখিত, আমি এখন ব্যস্ত আছি। কিছুক্ষণ পর আবার চেষ্টা করুন।";
+      fullReply = "দুঃখিত, এআই সার্ভারটি বর্তমানে কাজ করছে না। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।";
       res.write(`data: ${JSON.stringify({ token: fullReply })}\n\n`);
     }
 
@@ -319,11 +317,9 @@ app.post("/chat", async (req, res) => {
 
   } catch (error: any) {
     console.error("Chat Error:", error);
-    res.end();
+    res.status(500).end();
   }
 });
-// ===========================
-
 
 // Get all (for admin/debug)
 app.get("/chat", async (req, res) => {
