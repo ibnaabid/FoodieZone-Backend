@@ -260,20 +260,16 @@ app.get("/reviews", async (req, res) => {
  // ===========================
 // AI Chat — Fixed & Clean
 // ===========================
+// AI Chat — Fixed & Clean
 app.post("/chat", async (req, res) => {
   try {
-    const { userId, role, message } = req.body;
+    const { userId, message } = req.body;
 
     if (!userId || !message?.trim()) {
       return res.status(400).json({ error: "userId and message required" });
     }
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders();
-
-    // Save User Message
+    // ১. ইউজার মেসেজ ডাটাবেজে সেভ করা
     await conversationsCollection.insertOne({
       userId,
       role: "user",
@@ -281,30 +277,41 @@ app.post("/chat", async (req, res) => {
       createdAt: new Date(),
     });
 
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
     let fullReply = "";
 
     try {
+      // ২. সিস্টেম প্রম্পটসহ মডেল কল করা
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const chat = model.startChat({
+        history: [{ role: "user", parts: [{ text: SYSTEM_PROMPT }] }],
+      });
 
-      const result = await model.generateContentStream(message.trim());
+      const result = await chat.sendMessageStream(message.trim());
 
       for await (const chunk of result.stream) {
-        const token = chunk.text() || "";
+        const token = chunk.text();
         if (token) {
           fullReply += token;
           res.write(`data: ${JSON.stringify({ token })}\n\n`);
         }
       }
     } catch (geminiError: any) {
-      console.error("❌ Gemini Error:", geminiError.message);
-      fullReply = "Sorry, AI service is currently unavailable. Please try again later.";
+      console.error("❌ Gemini API Error:", geminiError);
+      fullReply = "দুঃখিত, আমি এখন ব্যস্ত আছি। কিছুক্ষণ পর আবার চেষ্টা করুন।";
+      res.write(`data: ${JSON.stringify({ token: fullReply })}\n\n`);
     }
 
-    // Save Assistant Reply
+    // ৩. এসিস্ট্যান্টের উত্তর ডাটাবেজে সেভ করা
     await conversationsCollection.insertOne({
       userId,
       role: "assistant",
-      content: fullReply || "I'm here to help with food orders!",
+      content: fullReply,
       createdAt: new Date(),
     });
 
@@ -313,25 +320,11 @@ app.post("/chat", async (req, res) => {
 
   } catch (error: any) {
     console.error("Chat Error:", error);
-    res.write(`data: ${JSON.stringify({ error: "Something went wrong. Please try again." })}\n\n`);
     res.end();
   }
-});``
-// ===========================
-// Get Chat History
-// Get Chat History for specific user
-app.get("/chat/:userId", async (req, res) => {
-  try {
-    const history = await conversationsCollection
-      .find({ userId: req.params.userId })
-      .sort({ createdAt: 1 })        // Oldest first (better UX)
-      .toArray();
-
-    res.json(history);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch chat history" });
-  }
 });
+// ===========================
+
 
 // Get all (for admin/debug)
 app.get("/chat", async (req, res) => {
@@ -348,14 +341,6 @@ app.get("/chat", async (req, res) => {
 });
 
 
-  app.get("/chat", async (req, res) => {
-    try {
-      const history = await conversationsCollection.find().sort({ createdAt: -1 }).limit(10).toArray();
-      res.json(history);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch history" });
-    }
-  });
 
     // ===========================
     // Home Route
