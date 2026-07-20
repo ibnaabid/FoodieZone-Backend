@@ -36,6 +36,8 @@ const client = new MongoClient(uri, {
 // Gemini Setup
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
+
+
 console.log(
   "🔑 GEMINI_API_KEY loaded:",
   process.env.GEMINI_API_KEY ? "Yes" : "❌ MISSING!"
@@ -43,9 +45,11 @@ console.log(
 
 
 
+
 const SYSTEM_PROMPT = `You are CravingByte's AI assistant — a friendly food ordering app assistant.
 You help users find dishes, understand categories, track orders, and navigate the app.
 Keep answers short, warm, and practical. If asked something outside food/ordering context, gently redirect.`;
+
 
 
 
