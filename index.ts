@@ -49,7 +49,7 @@ const openrouter = new OpenAI({
   },
 });
 
-const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+const MODEL = "google/gemini-2.0-flash-exp:free";
 
 const SYSTEM_PROMPT = `You are CravingByte's AI assistant — a friendly food ordering app assistant.
 You help users find dishes, understand categories, track orders, and navigate the app.
@@ -275,37 +275,28 @@ app.post("/chat", async (req, res) => {
       return res.status(400).json({ error: "userId and message required" });
     }
 
-    if (!conversationsCollection) {
-      throw new Error("Database not connected");
-    }
-
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // Save User Message
+    // Save user message
     await conversationsCollection.insertOne({
-      userId,
-      role: "user",
-      content: message.trim(),
-      createdAt: new Date(),
+      userId, role: "user", content: message.trim(), createdAt: new Date()
     });
 
-    let fullReply = "";
+    let fullReply = "Sorry, AI is busy right now.";
 
     try {
       const stream = await openrouter.chat.completions.create({
-        model: MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: message.trim() }
-        ],
+        model: "google/gemini-2.0-flash-exp:free",   // এটা ব্যবহার করো
+        messages: [{ role: "user", content: message.trim() }],
         stream: true,
-        temperature: 0.75,
-        max_tokens: 700,
+        temperature: 0.7,
+        max_tokens: 600,
       });
 
+      fullReply = "";
       for await (const chunk of stream) {
         const token = chunk.choices?.[0]?.delta?.content || "";
         if (token) {
@@ -313,35 +304,24 @@ app.post("/chat", async (req, res) => {
           res.write(`data: ${JSON.stringify({ token })}\n\n`);
         }
       }
-    } catch (aiError: any) {
-      console.error("OpenRouter Error:", aiError.message);
-      fullReply = "AI service is currently unavailable. Please try again later.";
+    } catch (aiErr) {
+      console.error("AI Error:", aiErr.message);
     }
 
-    if (!fullReply.trim()) {
-      fullReply = "হ্যাঁ বলুন, কীভাবে সাহায্য করতে পারি?";
-    }
-
-    // Save Assistant Reply
+    // Save AI reply
     await conversationsCollection.insertOne({
-      userId,
-      role: "assistant",
-      content: fullReply,
-      createdAt: new Date(),
+      userId, role: "assistant", content: fullReply, createdAt: new Date()
     });
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
 
-  } catch (error: any) {
-    console.error("🚨 Chat Error:", error.message);
-    res.write(`data: ${JSON.stringify({ 
-      error: "Something went wrong. Please try again." 
-    })}\n\n`);
+  } catch (error) {
+    console.error("Chat Error:", error);
+    res.write(`data: ${JSON.stringify({ error: "Something went wrong." })}\n\n`);
     res.end();
   }
 });
-
 // ===========================
 // Get Chat History
 // Get Chat History for specific user
