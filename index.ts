@@ -7,6 +7,7 @@ import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -33,23 +34,15 @@ const client = new MongoClient(uri, {
 });
 
 
+// Gemini Setup
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
 console.log(
-  "🔑 OPENROUTER_API_KEY loaded:",
-  process.env.OPENROUTER_API_KEY
-    ? `Yes (starts with ${process.env.OPENROUTER_API_KEY.slice(0, 6)}...)`
-    : "❌ NO — missing!"
+  "🔑 GEMINI_API_KEY loaded:",
+  process.env.GEMINI_API_KEY ? "Yes" : "❌ MISSING!"
 );
 
-const openrouter = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": "https://foodiezone-nu.vercel.app",
-    "X-Title": "CravingByte",
-  },
-});
 
-const MODEL = "google/gemini-2.0-flash-exp:free";
 
 const SYSTEM_PROMPT = `You are CravingByte's AI assistant — a friendly food ordering app assistant.
 You help users find dishes, understand categories, track orders, and navigate the app.
@@ -280,45 +273,47 @@ app.post("/chat", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // Save user message
+    // Save User Message
     await conversationsCollection.insertOne({
-      userId, role: "user", content: message.trim(), createdAt: new Date()
+      userId,
+      role: "user",
+      content: message.trim(),
+      createdAt: new Date(),
     });
 
-    let fullReply = "Sorry, AI is busy right now.";
+    let fullReply = "";
 
     try {
-      const stream = await openrouter.chat.completions.create({
-        model: "google/gemini-2.0-flash-exp:free",   // এটা ব্যবহার করো
-        messages: [{ role: "user", content: message.trim() }],
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 600,
-      });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      fullReply = "";
-      for await (const chunk of stream) {
-        const token = chunk.choices?.[0]?.delta?.content || "";
+      const result = await model.generateContentStream(message.trim());
+
+      for await (const chunk of result.stream) {
+        const token = chunk.text() || "";
         if (token) {
           fullReply += token;
           res.write(`data: ${JSON.stringify({ token })}\n\n`);
         }
       }
-    } catch (aiErr) {
-      console.error("AI Error:", aiErr.message);
+    } catch (geminiError: any) {
+      console.error("❌ Gemini Error:", geminiError.message);
+      fullReply = "Sorry, AI service is currently unavailable. Please try again later.";
     }
 
-    // Save AI reply
+    // Save Assistant Reply
     await conversationsCollection.insertOne({
-      userId, role: "assistant", content: fullReply, createdAt: new Date()
+      userId,
+      role: "assistant",
+      content: fullReply || "I'm here to help with food orders!",
+      createdAt: new Date(),
     });
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Chat Error:", error);
-    res.write(`data: ${JSON.stringify({ error: "Something went wrong." })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: "Something went wrong. Please try again." })}\n\n`);
     res.end();
   }
 });
