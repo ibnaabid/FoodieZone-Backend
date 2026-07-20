@@ -7,6 +7,7 @@ import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -33,13 +34,11 @@ const client = new MongoClient(uri, {
 });
 
 
-// Gemini Setup
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 
 console.log(
-  "🔑 GEMINI_API_KEY loaded:",
+  "🔑 GROQ_API_KEY loaded:",
   process.env.GEMINI_API_KEY ? "Yes" : "❌ MISSING!"
 );
 
@@ -260,70 +259,36 @@ app.get("/reviews", async (req, res) => {
 
     // ===========================
     // AI Chat — Gemini Streaming
- // ===========================
-// AI Chat — Fixed & Clean
-// ===========================
-// AI Chat — Fixed & Clean
-// AI Chat — Refactored and Stable
+
 app.post("/chat", async (req, res) => {
+  const { userId, message } = req.body;
+  if (!userId || !message?.trim()) return res.status(400).json({ error: "Invalid input" });
+
   try {
-    const { userId, message } = req.body;
+    // ডাটাবেজে ইউজার মেসেজ সেভ
+    await conversationsCollection.insertOne({ userId, role: "user", content: message, createdAt: new Date() });
 
-    if (!userId || !message?.trim()) {
-      return res.status(400).json({ error: "userId and message required" });
-    }
-
-    // ১. ইউজার মেসেজ ডাটাবেজে সেভ করা
-    await conversationsCollection.insertOne({
-      userId,
-      role: "user",
-      content: message.trim(),
-      createdAt: new Date(),
+    // Groq থেকে রেসপন্স নেওয়া
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: message }
+      ],
+      model: "llama3-8b-8192", // এটি খুবই দ্রুত এবং ফ্রি টায়ারে ভালো কাজ করে
     });
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders();
+    const reply = chatCompletion.choices[0]?.message?.content || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
 
-    let fullReply = "";
+    // ডাটাবেজে অ্যাসিস্ট্যান্ট মেসেজ সেভ
+    await conversationsCollection.insertOne({ userId, role: "assistant", content: reply, createdAt: new Date() });
 
-    try {
-      // সিস্টেম প্রম্পটটিকে মেসেজের সাথে জুড়ে দেওয়া
-      const fullPrompt = `${SYSTEM_PROMPT}\n\nUser Question: ${message.trim()}`;
-      
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const result = await model.generateContentStream(fullPrompt);
-
-      for await (const chunk of result.stream) {
-        const token = chunk.text();
-        if (token) {
-          fullReply += token;
-          res.write(`data: ${JSON.stringify({ token })}\n\n`);
-        }
-      }
-    } catch (geminiError: any) {
-      console.error("❌ Gemini API Error:", geminiError);
-      fullReply = "দুঃখিত, এআই সার্ভারটি বর্তমানে কাজ করছে না। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।";
-      res.write(`data: ${JSON.stringify({ token: fullReply })}\n\n`);
-    }
-
-    // ৩. এসিস্ট্যান্টের উত্তর ডাটাবেজে সেভ করা
-    await conversationsCollection.insertOne({
-      userId,
-      role: "assistant",
-      content: fullReply,
-      createdAt: new Date(),
-    });
-
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-    res.end();
-
-  } catch (error: any) {
-    console.error("Chat Error:", error);
-    res.status(500).end();
+    res.status(200).json({ reply });
+  } catch (error) {
+    console.error("Groq API Error:", error);
+    res.status(500).json({ error: "API connection failed" });
   }
 });
+
 
 // Get all (for admin/debug)
 app.get("/chat", async (req, res) => {
