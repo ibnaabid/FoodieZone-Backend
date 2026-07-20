@@ -316,7 +316,7 @@ app.post("/chat", async (req, res) => {
     res.write(`data: ${JSON.stringify({ error: "Something went wrong. Please try again." })}\n\n`);
     res.end();
   }
-});
+});``
 // ===========================
 // Get Chat History
 // Get Chat History for specific user
