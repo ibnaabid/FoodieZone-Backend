@@ -48,6 +48,7 @@ const openrouter = new OpenAI({
     "X-Title": "CravingByte",
   },
 });
+
 const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 const SYSTEM_PROMPT = `You are CravingByte's AI assistant — a friendly food ordering app assistant.
@@ -275,7 +276,7 @@ app.post("/chat", async (req, res) => {
     }
 
     if (!conversationsCollection) {
-      return res.status(500).json({ error: "Database not ready" });
+      throw new Error("Database not connected");
     }
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -283,56 +284,60 @@ app.post("/chat", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // History
-    const rawHistory = await conversationsCollection.find({ userId }).sort({ createdAt: 1 }).limit(15).toArray();
-
-    const prevMessages = rawHistory
-      .filter((doc: any) => doc.role && doc.content)
-      .map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
-
-    const chatMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...prevMessages,
-      { role: "user", content: message.trim() }
-    ];
-
-    // Save user message
+    // Save User Message
     await conversationsCollection.insertOne({
-      userId, role: "user", content: message.trim(), createdAt: new Date()
-    });
-
-    // Call AI
-    const stream = await openrouter.chat.completions.create({
-      model: MODEL,
-      messages: chatMessages,
-      stream: true,
-      temperature: 0.75,
-      max_tokens: 700,
+      userId,
+      role: "user",
+      content: message.trim(),
+      createdAt: new Date(),
     });
 
     let fullReply = "";
 
-    for await (const chunk of stream) {
-      const token = chunk.choices?.[0]?.delta?.content || "";
-      if (token) {
-        fullReply += token;
-        res.write(`data: ${JSON.stringify({ token })}\n\n`);
+    try {
+      const stream = await openrouter.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: message.trim() }
+        ],
+        stream: true,
+        temperature: 0.75,
+        max_tokens: 700,
+      });
+
+      for await (const chunk of stream) {
+        const token = chunk.choices?.[0]?.delta?.content || "";
+        if (token) {
+          fullReply += token;
+          res.write(`data: ${JSON.stringify({ token })}\n\n`);
+        }
       }
+    } catch (aiError: any) {
+      console.error("OpenRouter Error:", aiError.message);
+      fullReply = "AI service is currently unavailable. Please try again later.";
     }
 
-    if (!fullReply.trim()) fullReply = "হ্যাঁ বলুন, কীভাবে সাহায্য করতে পারি?";
+    if (!fullReply.trim()) {
+      fullReply = "হ্যাঁ বলুন, কীভাবে সাহায্য করতে পারি?";
+    }
 
-    // Save AI reply
+    // Save Assistant Reply
     await conversationsCollection.insertOne({
-      userId, role: "assistant", content: fullReply, createdAt: new Date()
+      userId,
+      role: "assistant",
+      content: fullReply,
+      createdAt: new Date(),
     });
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
 
   } catch (error: any) {
-    console.error("Chat Error:", error.message);
-    res.write(`data: ${JSON.stringify({ error: "Something went wrong. Please try again." })}\n\n`);
+    console.error("🚨 Chat Error:", error.message);
+    res.write(`data: ${JSON.stringify({ 
+      error: "Something went wrong. Please try again." 
+    })}\n\n`);
     res.end();
   }
 });
