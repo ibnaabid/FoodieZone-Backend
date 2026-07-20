@@ -6,7 +6,6 @@ import express, { Application } from "express";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
-import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app: Application = express();
