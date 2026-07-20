@@ -260,29 +260,47 @@ app.get("/reviews", async (req, res) => {
     // ===========================
     // AI Chat — Gemini Streaming
 
+// ===========================
+// AI Chat — Groq JSON Response
+// ===========================
 app.post("/chat", async (req, res) => {
   const { userId, message } = req.body;
-  if (!userId || !message?.trim()) return res.status(400).json({ error: "Invalid input" });
+  
+  if (!userId || !message?.trim()) {
+    return res.status(400).json({ error: "Invalid input" });
+  }
 
   try {
-    // ডাটাবেজে ইউজার মেসেজ সেভ
-    await conversationsCollection.insertOne({ userId, role: "user", content: message, createdAt: new Date() });
+    // ১. ইউজার মেসেজ ডাটাবেজে সেভ
+    await conversationsCollection.insertOne({ 
+      userId, 
+      role: "user", 
+      content: message, 
+      createdAt: new Date() 
+    });
 
-    // Groq থেকে রেসপন্স নেওয়া
+    // ২. Groq থেকে রেসপন্স নেওয়া
     const chatCompletion = await groq.chat.completions.create({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: message }
       ],
-      model: "llama3-8b-8192", // এটি খুবই দ্রুত এবং ফ্রি টায়ারে ভালো কাজ করে
+      model: "llama3-8b-8192",
     });
 
     const reply = chatCompletion.choices[0]?.message?.content || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
 
-    // ডাটাবেজে অ্যাসিস্ট্যান্ট মেসেজ সেভ
-    await conversationsCollection.insertOne({ userId, role: "assistant", content: reply, createdAt: new Date() });
+    // ৩. অ্যাসিস্ট্যান্টের উত্তর ডাটাবেজে সেভ
+    await conversationsCollection.insertOne({ 
+      userId, 
+      role: "assistant", 
+      content: reply, 
+      createdAt: new Date() 
+    });
 
+    // ৪. JSON ফরম্যাটে রেসপন্স পাঠানো
     res.status(200).json({ reply });
+    
   } catch (error) {
     console.error("Groq API Error:", error);
     res.status(500).json({ error: "API connection failed" });
