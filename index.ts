@@ -270,6 +270,7 @@ app.get("/reviews", async (req, res) => {
 app.post("/chat", async (req, res) => {
   try {
     const { userId, role, message } = req.body;
+    console.log("📨 Chat Request:", { userId, role, messageLength: message?.length });
 
     if (!userId || !message?.trim()) {
       return res.status(400).json({ error: "userId and message are required" });
@@ -280,7 +281,15 @@ app.post("/chat", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // Fetch previous messages
+    // Check API Key
+    if (!process.env.OPENROUTER_API_KEY) {
+      console.error("❌ OPENROUTER_API_KEY is missing!");
+      throw new Error("API Key not configured");
+    }
+
+    console.log("🔑 API Key loaded:", process.env.OPENROUTER_API_KEY.slice(0, 8) + "...");
+
+    // Fetch history
     const rawHistory = await conversationsCollection
       .find({ userId })
       .sort({ createdAt: 1 })
@@ -288,12 +297,7 @@ app.post("/chat", async (req, res) => {
       .toArray();
 
     const prevMessages = rawHistory
-      .filter((doc: any) => 
-        doc.role && 
-        doc.content && 
-        typeof doc.content === "string" &&
-        doc.content.trim() !== ""
-      )
+      .filter((doc: any) => doc.role && doc.content?.trim())
       .map((m: any) => ({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.content,
@@ -317,13 +321,15 @@ app.post("/chat", async (req, res) => {
       createdAt: new Date(),
     });
 
-    // Call AI
+    console.log("🤖 Calling OpenRouter...");
+
+    // Call OpenRouter
     const stream = await openrouter.chat.completions.create({
       model: MODEL,
       messages: chatMessages,
       stream: true,
       temperature: 0.75,
-      max_tokens: 1000,
+      max_tokens: 800,
     });
 
     let fullReply = "";
@@ -335,6 +341,8 @@ app.post("/chat", async (req, res) => {
         res.write(`data: ${JSON.stringify({ token })}\n\n`);
       }
     }
+
+    console.log("✅ AI Response received, length:", fullReply.length);
 
     if (!fullReply.trim()) {
       fullReply = "Sorry, I couldn't generate a response right now.";
@@ -348,17 +356,19 @@ app.post("/chat", async (req, res) => {
       createdAt: new Date(),
     });
 
-    // Send done signal
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
 
   } catch (error: any) {
-    console.error("Chat Error:", error);
-    res.write(`data: ${JSON.stringify({ error: "Something went wrong. Please try again." })}\n\n`);
+    console.error("🚨 Chat Error:", error.message);
+    console.error("Full Error:", error);
+
+    res.write(`data: ${JSON.stringify({ 
+      error: "Something went wrong. Please try again." 
+    })}\n\n`);
     res.end();
   }
 });
-
 
 // ===========================
 // Get Chat History
