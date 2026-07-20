@@ -264,77 +264,52 @@ app.get("/reviews", async (req, res) => {
 
     // ===========================
     // AI Chat — Gemini Streaming
-    // ===========================
-// ===========================
-// AI Chat — Gemini Streaming + Role Support
-// ===========================
-// ===========================
-// AI Chat — Gemini Streaming + Role Support
-// ===========================
-// ===========================
-// AI Chat — Gemini Streaming + Role Support (Clean & Fixed)
-// ===========================
-// ===========================
-// AI Chat — Gemini Streaming + Role Support (Fixed)
-// ===========================
-// ===========================
-// AI Chat — Fixed & Improved
-// ===========================
-// ===========================
-// AI Chat — Fixed & Improved
+ // ===========================
+// AI Chat — Fixed & Clean
 // ===========================
 app.post("/chat", async (req, res) => {
   try {
     const { userId, role, message } = req.body;
 
     if (!userId || !message?.trim()) {
-      return res.status(400).json({ error: "userId and valid message are required" });
+      return res.status(400).json({ error: "userId and message are required" });
     }
 
-    // SSE Headers
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // ==================== Fetch & Normalize History ====================
-    let rawHistory = await conversationsCollection
+    // Fetch previous messages
+    const rawHistory = await conversationsCollection
       .find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(15)
+      .sort({ createdAt: 1 })
+      .limit(20)
       .toArray();
 
-    // Normalize + Filter invalid documents
     const prevMessages = rawHistory
-      .filter(doc => {
-        // খালি messages অ্যারে বা অসম্পূর্ণ ডকুমেন্ট বাদ দাও
-        if (doc.messages && (!Array.isArray(doc.messages) || doc.messages.length === 0)) {
-          return false;
-        }
-        return !!(doc.content && doc.role);
-      })
+      .filter((doc: any) => 
+        doc.role && 
+        doc.content && 
+        typeof doc.content === "string" &&
+        doc.content.trim() !== ""
+      )
       .map((m: any) => ({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.content,
-      }))
-      .reverse(); // chronological order (oldest first)
+      }));
 
-    // ==================== Role Context ====================
-    const roleContext =
-      role === "restaurant"
-        ? "The user is a restaurant owner managing their menu and orders."
-        : "The user is a customer browsing food and placing orders.";
+    const roleContext = role === "restaurant"
+      ? "The user is a restaurant owner managing their menu and orders."
+      : "The user is a customer browsing food and placing orders.";
 
     const chatMessages = [
-      { 
-        role: "system" as const, 
-        content: `${SYSTEM_PROMPT}\n${roleContext}` 
-      },
+      { role: "system", content: `${SYSTEM_PROMPT}\n${roleContext}` },
       ...prevMessages,
-      { role: "user" as const, content: message.trim() },
+      { role: "user", content: message.trim() },
     ];
 
-    // Save User Message
+    // Save user message
     await conversationsCollection.insertOne({
       userId,
       role: "user",
@@ -342,13 +317,13 @@ app.post("/chat", async (req, res) => {
       createdAt: new Date(),
     });
 
-    // ==================== Call OpenRouter ====================
+    // Call AI
     const stream = await openrouter.chat.completions.create({
       model: MODEL,
       messages: chatMessages,
       stream: true,
       temperature: 0.75,
-      max_tokens: 1200,
+      max_tokens: 1000,
     });
 
     let fullReply = "";
@@ -361,12 +336,11 @@ app.post("/chat", async (req, res) => {
       }
     }
 
-    // Fallback যদি কোনো টোকেন না আসে
     if (!fullReply.trim()) {
-      fullReply = "Sorry, I couldn't generate a proper response right now. Please try again.";
+      fullReply = "Sorry, I couldn't generate a response right now.";
     }
 
-    // Save Assistant Reply
+    // Save assistant reply
     await conversationsCollection.insertOne({
       userId,
       role: "assistant",
@@ -374,61 +348,48 @@ app.post("/chat", async (req, res) => {
       createdAt: new Date(),
     });
 
-    // ==================== Suggestions ====================
-    let suggestions: string[] = [];
-    try {
-      if (fullReply.length > 10) {
-        const suggestionRes = await openrouter.chat.completions.create({
-          model: MODEL,
-          messages: [
-            {
-              role: "system",
-              content: "Suggest 3 short, natural follow-up questions the user might ask next. Reply ONLY with a valid JSON array of 3 strings.",
-            },
-            { role: "user", content: fullReply },
-          ],
-          temperature: 0.6,
-          max_tokens: 200,
-        });
-
-        const suggestionText = suggestionRes.choices?.[0]?.message?.content || "[]";
-        suggestions = JSON.parse(suggestionText);
-      }
-    } catch (suggErr) {
-      console.warn("Suggestions generation failed:", suggErr);
-      suggestions = [];
-    }
-
-    // Final Done Signal
-    res.write(`data: ${JSON.stringify({ done: true, suggestions })}\n\n`);
+    // Send done signal
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
 
   } catch (error: any) {
-    console.error("Chat error:", error);
-    res.write(`data: ${JSON.stringify({ 
-      error: "Something went wrong. Please try again." 
-    })}\n\n`);
+    console.error("Chat Error:", error);
+    res.write(`data: ${JSON.stringify({ error: "Something went wrong. Please try again." })}\n\n`);
     res.end();
   }
 });
 
+
 // ===========================
 // Get Chat History
-// ===========================
+// Get Chat History for specific user
 app.get("/chat/:userId", async (req, res) => {
   try {
     const history = await conversationsCollection
       .find({ userId: req.params.userId })
-      .sort({ createdAt: -1 })
-      .limit(20)
+      .sort({ createdAt: 1 })        // Oldest first (better UX)
       .toArray();
 
     res.json(history);
   } catch (error) {
-    console.error("History fetch error:", error);
     res.status(500).json({ error: "Failed to fetch chat history" });
   }
 });
+
+// Get all (for admin/debug)
+app.get("/chat", async (req, res) => {
+  try {
+    const history = await conversationsCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .toArray();
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
+});
+
 
   app.get("/chat", async (req, res) => {
     try {
